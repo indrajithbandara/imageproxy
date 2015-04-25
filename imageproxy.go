@@ -43,6 +43,7 @@ type Proxy struct {
 	// Whitelist specifies a list of remote hosts that images can be
 	// proxied from.  An empty list means all hosts are allowed.
 	Whitelist []string
+	DefaultImg string
 }
 
 // NewProxy constructs a new proxy.  The provided http RoundTripper will be
@@ -99,7 +100,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		msg := fmt.Sprintf("error fetching remote image: %v", err)
 		glog.Error(msg)
-		http.Error(w, msg, http.StatusInternalServerError)
+		if !p.useDefault() {
+			http.Error(w, msg, http.StatusInternalServerError)
+		} else {
+			http.ServeFile(w, r, p.DefaultImg)
+		}
 		return
 	}
 	defer resp.Body.Close()
@@ -110,7 +115,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != http.StatusOK {
 		msg := fmt.Sprintf("remote URL %q returned status: %v", req.URL, resp.Status)
 		glog.Error(msg)
-		http.Error(w, msg, resp.StatusCode)
+		if !p.useDefault() {
+			http.Error(w, msg, resp.StatusCode)
+		}else {
+			http.ServeFile(w, r, p.DefaultImg)
+		}
 		return
 	}
 
@@ -133,6 +142,10 @@ func copyHeader(w http.ResponseWriter, r *http.Response, header string) {
 	if value, ok := r.Header[key]; ok {
 		w.Header()[key] = value
 	}
+}
+
+func (p *Proxy) useDefault() bool {
+	return p.DefaultImg != ""
 }
 
 // allowed returns whether the specified URL is on the whitelist of remote hosts.
